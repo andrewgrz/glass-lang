@@ -35,5 +35,26 @@ def adder(a, b) { // A and B both have a Use of the Add trait; return Value is a
 let result = adder(1, 2);  // result is an Int since the arguments are Ints and adding ints returns an int
 ```
 
+## Repository Information
+ 
+### Crates
 
+#### glass-syntax
 
+AST + lexer + parser + diagnostics
+
+#### glass-semantics
+
+Name resolution + type inference + monomorphization
+
+#### glass-codegen
+
+WebAssembly emission
+
+#### glass-driver
+
+Pipeline + workspace + config
+
+#### glass-cli
+
+Command line interface to run the compiler 
