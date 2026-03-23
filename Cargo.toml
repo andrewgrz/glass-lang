@@ -2,3 +2,9 @@
 [workspace]
 resolver = "3"
 members = ["glass-cli", "glass-codegen", "glass-driver", "glass-semantics", "glass-syntax"]
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
