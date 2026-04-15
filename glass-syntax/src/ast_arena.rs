@@ -3,8 +3,8 @@
 //! links to the other nodes via the indexes which are returned when adding
 //! a new node. Check out `ExprArena` for a concrete example of using
 
-use std::marker::PhantomData;
 use crate::span::Span;
+use std::marker::PhantomData;
 
 /// An arena for AstNodes. Generic over the Ast Type and matching Id
 #[derive(Debug, Default)]
