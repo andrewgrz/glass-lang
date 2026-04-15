@@ -85,7 +85,11 @@ pub struct SpanFactory {
 impl SpanFactory {
     pub fn new(filename: &str) -> SpanFactory {
         SpanFactory {
-            current: Location { line: 1, column: 1, offset: 0 },
+            current: Location {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
             filename: filename.into(),
         }
     }

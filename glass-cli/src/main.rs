@@ -1,4 +1,3 @@
-
 fn print_header() {
     println!();
     println!("~~~~~~~~~~~~~~~~~~");
