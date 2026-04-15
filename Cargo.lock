@@ -17,6 +17,9 @@ version = "0.1.0"
 [[package]]
 name = "glass-semantics"
 version = "0.1.0"
+dependencies = [
+ "glass-syntax",
+]
 
 [[package]]
 name = "glass-syntax"
