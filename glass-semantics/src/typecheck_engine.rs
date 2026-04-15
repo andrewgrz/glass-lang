@@ -97,7 +97,7 @@ impl Bindings {
 }
 
 /// The engine in the backend for managing the types during typechecking
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct TypeCheckerEngine {
     r: crate::reachability::Reachability,
     types: Vec<TypeNode>,
@@ -329,9 +329,8 @@ mod check_expr_tests {
         }
 
         fn add_expr(&mut self, expr: ExprAst) -> ExprId {
-            let mut span_factory = SpanFactory::new("example.gs");
             self.expr_arena
-                .new_node(expr.clone(), span_factory.span(0, 1))
+                .new_node(expr.clone(), self.span_factory.span(0, 1))
         }
 
         fn bool(&mut self, b: bool) -> ExprId {
