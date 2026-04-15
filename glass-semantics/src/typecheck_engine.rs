@@ -24,7 +24,7 @@ impl error::Error for TypeError {}
 
 /// Value type heads — what a value IS
 #[derive(Debug, Clone, PartialEq)]
-enum VTypeHead {
+pub enum VTypeHead {
     VBool,
     VInt,
     VFloat,
@@ -37,7 +37,7 @@ enum VTypeHead {
 
 /// Use type heads — what a use site EXPECTS
 #[derive(Debug, Clone, PartialEq)]
-enum UTypeHead {
+pub enum UTypeHead {
     UBool,
     UInt,
     UFloat,
@@ -60,41 +60,50 @@ enum UTypeHead {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum TypeNode {
+pub enum TypeNode {
     Var,
     Value(VTypeHead),
     Use(UTypeHead),
 }
 
-struct Bindings {
+pub struct Bindings {
     m: HashMap<String, Value>,
 }
 impl Bindings {
+    /// Create a new bindings
     fn new() -> Self {
         Self { m: HashMap::new() }
     }
 
+    /// retrieve an optional value from the bindings
+    /// returns none if the value is not in the bindings
     fn get(&self, k: &str) -> Option<Value> {
         self.m.get(k).copied()
     }
 
+    /// Add a new binding
+    ///
+    /// `k` is the binding names
+    /// `v` is the value we are binding to
     fn insert(&mut self, k: String, v: Value) {
         self.m.insert(k.clone(), v);
     }
 
+    /// execute the next code in the child scope, used when going into a deeper scope
     fn in_child_scope<T>(&mut self, cb: impl FnOnce(&mut Self) -> T) -> T {
         let mut child_scope = Bindings { m: self.m.clone() };
         cb(&mut child_scope)
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct TypeCheckerCore {
+/// The engine in the backend for managing the types during typechecking
+#[derive(Debug, Clone, Default)]
+pub struct TypeCheckerEngine {
     r: crate::reachability::Reachability,
     types: Vec<TypeNode>,
 }
 
-impl TypeCheckerCore {
+impl TypeCheckerEngine {
     pub fn new() -> Self {
         Self {
             r: Default::default(),
@@ -102,6 +111,7 @@ impl TypeCheckerCore {
         }
     }
 
+    /// Internal function to create a new value in the engine
     fn new_val(&mut self, val_type: VTypeHead) -> Value {
         let i = self.r.add_node();
         assert_eq!(i, self.types.len());
@@ -109,6 +119,7 @@ impl TypeCheckerCore {
         Value(i)
     }
 
+    /// Internal function to create a new use in the engine
     fn new_use(&mut self, constraint: UTypeHead) -> Use {
         let i = self.r.add_node();
         assert_eq!(i, self.types.len());
@@ -116,10 +127,15 @@ impl TypeCheckerCore {
         Use(i)
     }
 
+    /// Retrieve the type node for the value
     pub fn get_type_node(&self, v: Value) -> Option<&TypeNode> {
         self.types.get(v.0)
     }
 
+    /// Retrieve the type head for the value
+    ///
+    /// # Panics
+    /// Function panics if the provided value is not in the types
     pub fn value_head(&self, val: Value) -> Option<&VTypeHead> {
         if let Some(v) = self.get_type_node(val) {
             return match v {
@@ -131,6 +147,7 @@ impl TypeCheckerCore {
         panic!("ICE: invalid value passed to value head: {:?}", val);
     }
 
+    /// the core of the typechecking algo. flows the types backwards and forwards as needed
     pub fn flow(&mut self, lhs: Value, rhs: Use) -> Result<(), TypeError> {
         let mut pending_edges = vec![(lhs, rhs)];
         let mut type_pairs_to_check = Vec::new();
@@ -161,27 +178,34 @@ impl TypeCheckerCore {
         (Value(i), Use(i))
     }
 
+    /// insert a bool value to the engine
     pub fn bool_value(&mut self) -> Value {
         self.new_val(VTypeHead::VBool)
     }
+    /// insert a bool use to the engine
     pub fn bool_use(&mut self) -> Use {
         self.new_use(UTypeHead::UBool)
     }
 
+    /// insert an int value to the engine
     pub fn int_value(&mut self) -> Value {
         self.new_val(VTypeHead::VInt)
     }
+    /// insert an int use to the engine
     pub fn int_use(&mut self) -> Use {
         self.new_use(UTypeHead::UInt)
     }
 
+    /// insert a float value to the engine
     pub fn float_value(&mut self) -> Value {
         self.new_val(VTypeHead::VFloat)
     }
+    /// insert a float use to the engine
     pub fn float_use(&mut self) -> Use {
         self.new_use(UTypeHead::UFloat)
     }
 
+    /// insert a generic number use to the engine
     pub fn numeric_use(&mut self) -> Use {
         self.new_use(UTypeHead::UNumeric)
     }
@@ -206,8 +230,9 @@ pub fn check_heads(
     }
 }
 
+/// Runs the typecheck on an expr
 pub fn check_expr(
-    engine: &mut TypeCheckerCore,
+    engine: &mut TypeCheckerEngine,
     bindings: &mut Bindings,
     expr_arena: &ExprArena,
     expr_id: &ExprId,
@@ -331,7 +356,7 @@ mod check_expr_tests {
     }
 
     fn check_expr_helper(expr_arena: &ExprArena, expr_id: &ExprId) -> Result<Value, TypeError> {
-        let mut engine = TypeCheckerCore::new();
+        let mut engine = TypeCheckerEngine::new();
         let mut bindings = Bindings::new();
 
         check_expr(&mut engine, &mut bindings, expr_arena, expr_id)

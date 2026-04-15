@@ -2,3 +2,4 @@
 
 pub mod ast;
 pub mod span;
+pub mod ast_arena;
