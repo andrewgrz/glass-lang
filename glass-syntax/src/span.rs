@@ -110,7 +110,3 @@ impl SpanFactory {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-}

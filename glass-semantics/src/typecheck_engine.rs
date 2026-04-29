@@ -1,6 +1,5 @@
 use glass_syntax::ast::{BinOp, ExprArena, ExprAst, ExprId, Literal};
 use std::collections::HashMap;
-use std::fmt::format;
 use std::{error, fmt};
 
 type ID = usize;
@@ -71,6 +70,7 @@ pub struct Bindings {
 }
 impl Bindings {
     /// Create a new bindings
+    #[cfg(test)]
     fn new() -> Self {
         Self { m: HashMap::new() }
     }
