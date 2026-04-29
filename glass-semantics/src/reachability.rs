@@ -88,7 +88,7 @@ mod reachability_tests {
     #[test]
     fn test_add_edge() {
         let mut r = Reachability::default();
-        for i in 0..10 {
+        for _ in 0..10 {
             r.add_node();
         }
 

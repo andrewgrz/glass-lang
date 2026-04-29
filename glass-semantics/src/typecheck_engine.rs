@@ -1,11 +1,11 @@
-use crate::typecheck_engine::UTypeHead::UNumeric;
 use glass_syntax::ast::{BinOp, ExprArena, ExprAst, ExprId, Literal};
 use std::collections::HashMap;
 use std::{error, fmt};
+use std::fmt::format;
 
 type ID = usize;
 
-/// Opaque handle — the type of a value (positive / producer)
+/// Opaque handle — the type of a Value in the typechecking (positive / producer)
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Value(ID);
 
@@ -205,6 +205,15 @@ impl TypeCheckerEngine {
         self.new_use(UTypeHead::UFloat)
     }
 
+    /// insert a function value to the engine
+    pub fn func_value(&mut self, args: Vec<Use>, ret: Value) -> Value {
+        self.new_val(VTypeHead::VFunc { args, ret })
+    }
+    /// insert a function use to the engine
+    pub fn func_use(&mut self, args: Vec<Value>, ret: Use) -> Use {
+        self.new_use(UTypeHead::UFunc { args, ret })
+    }
+
     /// insert a generic number use to the engine
     pub fn numeric_use(&mut self) -> Use {
         self.new_use(UTypeHead::UNumeric)
@@ -226,7 +235,19 @@ pub fn check_heads(
         (&VInt, &UNumeric) => Ok(()),
         (&VFloat, &UFloat) => Ok(()),
         (&VFloat, &UNumeric) => Ok(()),
-        _ => Err(TypeError("Unexpected types".to_string())),
+        (VFunc { args: args1, ret: ret1 }, UFunc { args: args2, ret: ret2 }) => {
+            if args1.len() != args2.len() {
+                return Err(TypeError("Argument count mismatch".into()));
+            }
+            // Return: function's ret flows to caller's ret (covariant)
+            out.push((*ret1, *ret2));
+            // Args: caller's arg flows to function's param (CONTRAvariant)
+            for (func_arg, caller_arg) in args1.iter().zip(args2.iter()) {
+                out.push((*caller_arg, *func_arg));  // flipped!
+            }
+            Ok(())
+        }
+        _ => Err(TypeError(format!("Unexpected types: {:?} and {:?}", lhs, rhs))),
     }
 }
 
@@ -286,6 +307,46 @@ pub fn check_expr(
             engine.flow(result_val, num_use)?;
             Ok(result_val)
         }
+        ExprAst::Let { name, rhs } => {
+            let rhs_val = check_expr(engine, bindings, expr_arena, rhs)?;
+            bindings.insert(name.clone(), rhs_val);
+            Ok(rhs_val)
+        }
+
+        ExprAst::FuncDef { name, args, body } => {
+            let mut param_vars = Vec::with_capacity(args.len());
+
+            let body_type = bindings.in_child_scope(|inner_bindings| {
+                for arg_ast in args {
+                    let (param_val, param_bound) = engine.var();
+                    inner_bindings.insert(arg_ast.name(), param_val);
+                    param_vars.push(param_bound);
+                }
+                check_expr(engine, inner_bindings, expr_arena, body)
+            })?;
+
+            // func takes the Use side of each param, and the Value of the body
+            let fn_value = engine.func_value(param_vars, body_type);
+            bindings.insert(name.clone(), fn_value);
+            Ok(fn_value)
+        }
+
+        ExprAst::FuncCall { name, args } => {
+            let func_value = bindings
+                .get(name.as_str())
+                .ok_or_else(|| TypeError(format!("Undefined variable {}", name)))?;
+
+            let mut arg_types = Vec::with_capacity(args.len());
+            for arg in args {
+                let t = check_expr(engine, bindings, expr_arena, arg)?;
+                arg_types.push(t);
+            }
+
+            let (ret_val, ret_bound) = engine.var();
+            let bound = engine.func_use(arg_types, ret_bound);
+            engine.flow(func_value, bound)?;
+            Ok(ret_val)
+        }
     }
 }
 
@@ -312,6 +373,7 @@ mod check_heads_tests {
 #[cfg(test)]
 mod check_expr_tests {
     use super::*;
+    use glass_syntax::ast::ArgAst;
     use glass_syntax::ast::Literal::Bool;
     use glass_syntax::span::SpanFactory;
 
@@ -328,29 +390,54 @@ mod check_expr_tests {
             }
         }
 
-        fn add_expr(&mut self, expr: ExprAst) -> ExprId {
+        fn new_expr(&mut self, expr: ExprAst) -> ExprId {
             self.expr_arena
                 .new_node(expr.clone(), self.span_factory.span(0, 1))
         }
 
         fn bool(&mut self, b: bool) -> ExprId {
-            self.add_expr(ExprAst::Literal(Bool(b)))
+            self.new_expr(ExprAst::Literal(Bool(b)))
         }
 
         fn int(&mut self, i: i64) -> ExprId {
-            self.add_expr(ExprAst::Literal(Literal::Int(i)))
+            self.new_expr(ExprAst::Literal(Literal::Int(i)))
         }
 
         fn float(&mut self, f: f64) -> ExprId {
-            self.add_expr(ExprAst::Literal(Literal::Float(f)))
+            self.new_expr(ExprAst::Literal(Literal::Float(f)))
         }
 
         fn add(&mut self, a: ExprId, b: ExprId) -> ExprId {
-            self.add_expr(ExprAst::BinOp {
+            self.new_expr(ExprAst::BinOp {
                 lhs: a,
                 rhs: b,
                 op: BinOp::Add,
             })
+        }
+
+        fn let_expr(&mut self, name: String, rhs: ExprId) -> ExprId {
+            self.new_expr(ExprAst::Let { name, rhs })
+        }
+
+        fn var(&mut self, name: String) -> ExprId {
+            self.new_expr(ExprAst::Variable(name))
+        }
+
+        fn func_def(&mut self, name: String, args: Vec<String>, body: ExprId) -> ExprId {
+            let arg_asts = args
+                .iter()
+                .map(|s| ArgAst::new(s.clone()))
+                .collect::<Vec<_>>();
+
+            self.new_expr(ExprAst::FuncDef {
+                name,
+                args: arg_asts,
+                body,
+            })
+        }
+
+        fn func_call(&mut self, name: String, args: Vec<ExprId>) -> ExprId {
+            self.new_expr(ExprAst::FuncCall { name, args })
         }
     }
 
@@ -409,5 +496,65 @@ mod check_expr_tests {
         let b = ast.float(2.2);
         let op = ast.add(a, b);
         assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_assigned_variable_resolves() {
+        let mut engine = TypeCheckerEngine::new();
+        let mut bindings = Bindings::new();
+
+        let mut ast = AstHelper::new();
+        let a = ast.float(1.1);
+        let let_expr = ast.let_expr("example".into(), a);
+        let let_value = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &let_expr)
+            .expect("ICE: Assignment failed");
+
+        // Make sure that it returns the same Value we inserted
+        let var = ast.var("example".into());
+        let res = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), let_value);
+
+        // Test that a second call resolves to the same thing
+        let var = ast.var("example".into());
+        assert_eq!(
+            check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var).unwrap(),
+            let_value
+        );
+    }
+
+    #[test]
+    fn test_unassigned_variable_fails() {
+        let mut engine = TypeCheckerEngine::new();
+        let mut bindings = Bindings::new();
+
+        let mut ast = AstHelper::new();
+        let var = ast.var("example".into());
+        assert!(check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var).is_err());
+    }
+
+    #[test]
+    fn test_function_definition_and_use() {
+        let mut engine = TypeCheckerEngine::new();
+        let mut bindings = Bindings::new();
+
+        let mut ast = AstHelper::new();
+
+        // A simple body of a + b
+        let a = ast.var("a".into());
+        let b = ast.var("b".into());
+        let body = ast.add(a, b);
+
+        let func = ast.func_def("adder".into(), vec!["a".into(), "b".into()], body);
+        let res = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &func);
+        assert!(res.is_ok());
+
+        // Test the usage now
+        let a_var = ast.int(1);
+        let b_var = ast.int(2);
+        let func_call = ast.func_call("adder".into(), vec![a_var, b_var]);
+
+        let res_2 = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &func_call);
+        assert!(res_2.is_ok());
     }
 }
