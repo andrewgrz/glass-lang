@@ -2,4 +2,5 @@
 
 pub mod ast;
 pub mod ast_arena;
+pub mod parser;
 pub mod span;

@@ -20,11 +20,29 @@ pub enum Literal {
 #[derive(Debug, PartialEq, Clone)]
 pub enum ExprAst {
     Literal(Literal),
-    BinOp { lhs: ExprId, op: BinOp, rhs: ExprId },
+    BinOp {
+        lhs: ExprId,
+        op: BinOp,
+        rhs: ExprId,
+    },
     Variable(String),
+    Let {
+        name: String,
+        rhs: ExprId,
+    },
+    FuncDef {
+        name: String,
+        args: Vec<ArgAst>,
+        body: ExprId,
+    },
+
+    FuncCall {
+        name: String,
+        args: Vec<ExprId>,
+    },
 }
 
-impl ExprAst {
+impl<'a> ExprAst {
     pub fn new_int(u: i64) -> ExprAst {
         ExprAst::Literal(Literal::Int(u))
     }
@@ -48,6 +66,49 @@ impl From<ExprId> for usize {
 
 /// An AST arena for Expr's
 pub type ExprArena = AstArena<ExprAst, ExprId>;
+
+/// The Argument ast
+#[derive(Debug, PartialEq, Clone)]
+pub struct ArgAst {
+    name: String,
+    arg_type: Option<String>,
+}
+
+impl ArgAst {
+    pub fn new(name: String) -> ArgAst {
+        ArgAst {
+            name,
+            arg_type: None,
+        }
+    }
+
+    pub fn new_with_arg_type(name: String, arg_type: Option<String>) -> ArgAst {
+        ArgAst { name, arg_type }
+    }
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ArgId(usize);
+
+impl From<usize> for ArgId {
+    fn from(n: usize) -> Self {
+        ArgId(n)
+    }
+}
+
+impl From<ArgId> for usize {
+    fn from(id: ArgId) -> Self {
+        id.0
+    }
+}
+
+/// An AST arena for ArgAst's
+pub type ArgAstArena = AstArena<ArgAst, ArgId>;
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum BinOp {
     Add,
