@@ -1,7 +1,7 @@
 use glass_syntax::ast::{BinOp, ExprArena, ExprAst, ExprId, Literal};
 use std::collections::HashMap;
-use std::{error, fmt};
 use std::fmt::format;
+use std::{error, fmt};
 
 type ID = usize;
 
@@ -235,7 +235,16 @@ pub fn check_heads(
         (&VInt, &UNumeric) => Ok(()),
         (&VFloat, &UFloat) => Ok(()),
         (&VFloat, &UNumeric) => Ok(()),
-        (VFunc { args: args1, ret: ret1 }, UFunc { args: args2, ret: ret2 }) => {
+        (
+            VFunc {
+                args: args1,
+                ret: ret1,
+            },
+            UFunc {
+                args: args2,
+                ret: ret2,
+            },
+        ) => {
             if args1.len() != args2.len() {
                 return Err(TypeError("Argument count mismatch".into()));
             }
@@ -243,11 +252,14 @@ pub fn check_heads(
             out.push((*ret1, *ret2));
             // Args: caller's arg flows to function's param (CONTRAvariant)
             for (func_arg, caller_arg) in args1.iter().zip(args2.iter()) {
-                out.push((*caller_arg, *func_arg));  // flipped!
+                out.push((*caller_arg, *func_arg)); // flipped!
             }
             Ok(())
         }
-        _ => Err(TypeError(format!("Unexpected types: {:?} and {:?}", lhs, rhs))),
+        _ => Err(TypeError(format!(
+            "Unexpected types: {:?} and {:?}",
+            lhs, rhs
+        ))),
     }
 }
 
