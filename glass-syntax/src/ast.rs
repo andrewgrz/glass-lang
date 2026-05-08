@@ -117,8 +117,8 @@ pub enum BinOp {
 
 #[cfg(test)]
 mod tests {
-    use chumsky::span::SimpleSpan;
     use super::*;
+    use chumsky::span::SimpleSpan;
 
     #[test]
     fn test_expr_arena() {
@@ -126,10 +126,18 @@ mod tests {
         let mut arena = ExprArena::new();
 
         // Add some new nodes to the arena
-        let a_span = SimpleSpan { start: 0, end: 1, context: () };
+        let a_span = SimpleSpan {
+            start: 0,
+            end: 1,
+            context: (),
+        };
         let a = arena.new_node(ExprAst::new_int(1), a_span.clone());
 
-        let b_span = SimpleSpan { start: 1, end: 2, context: () };
+        let b_span = SimpleSpan {
+            start: 1,
+            end: 2,
+            context: (),
+        };
         let b = arena.new_node(ExprAst::new_int(2), b_span.clone());
 
         // The bin op21
@@ -138,7 +146,11 @@ mod tests {
             op: BinOp::Add,
             rhs: b,
         };
-        let c_span = SimpleSpan { start: 4, end: 5, context: () };
+        let c_span = SimpleSpan {
+            start: 4,
+            end: 5,
+            context: (),
+        };
         let c = arena.new_node(bin_op.clone(), c_span.clone());
 
         assert_eq!(&bin_op, arena.get_node(c).expect("couldn't get bin_op"));

@@ -401,8 +401,14 @@ mod check_expr_tests {
         }
 
         fn new_expr(&mut self, expr: ExprAst) -> ExprId {
-            self.expr_arena
-                .new_node(expr.clone(), SimpleSpan { start: 0, end: 1, context: () })
+            self.expr_arena.new_node(
+                expr.clone(),
+                SimpleSpan {
+                    start: 0,
+                    end: 1,
+                    context: (),
+                },
+            )
         }
 
         fn bool(&mut self, b: bool) -> ExprId {

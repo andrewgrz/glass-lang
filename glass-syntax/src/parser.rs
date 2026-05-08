@@ -68,7 +68,13 @@ mod test {
         test_parse("9.23", ExprAst::Literal(Literal::Float(9.23)));
         test_parse("0.23", ExprAst::Literal(Literal::Float(0.23)));
         test_parse("10.23", ExprAst::Literal(Literal::Float(10.23)));
-        test_parse("10.239999999999999", ExprAst::Literal(Literal::Float(10.239999999999999)));
-        test_parse("10.2399999999999989", ExprAst::Literal(Literal::Float(10.2399999999999989)));
+        test_parse(
+            "10.239999999999999",
+            ExprAst::Literal(Literal::Float(10.239999999999999)),
+        );
+        test_parse(
+            "10.2399999999999989",
+            ExprAst::Literal(Literal::Float(10.2399999999999989)),
+        );
     }
 }
