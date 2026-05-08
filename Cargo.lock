@@ -91,6 +91,7 @@ version = "0.1.0"
 name = "glass-semantics"
 version = "0.1.0"
 dependencies = [
+ "chumsky",
  "glass-syntax",
 ]
 

@@ -385,26 +385,24 @@ mod check_heads_tests {
 #[cfg(test)]
 mod check_expr_tests {
     use super::*;
+    use chumsky::span::SimpleSpan;
     use glass_syntax::ast::ArgAst;
     use glass_syntax::ast::Literal::Bool;
-    use glass_syntax::span::SpanFactory;
 
     struct AstHelper {
         pub expr_arena: ExprArena,
-        pub span_factory: SpanFactory,
     }
 
     impl AstHelper {
         fn new() -> AstHelper {
             AstHelper {
                 expr_arena: ExprArena::new(),
-                span_factory: SpanFactory::new("example.gs"),
             }
         }
 
         fn new_expr(&mut self, expr: ExprAst) -> ExprId {
             self.expr_arena
-                .new_node(expr.clone(), self.span_factory.span(0, 1))
+                .new_node(expr.clone(), SimpleSpan { start: 0, end: 1, context: () })
         }
 
         fn bool(&mut self, b: bool) -> ExprId {

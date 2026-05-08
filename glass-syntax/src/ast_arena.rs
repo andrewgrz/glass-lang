@@ -3,7 +3,7 @@
 //! links to the other nodes via the indexes which are returned when adding
 //! a new node. Check out `ExprArena` for a concrete example of using
 
-use crate::span::Span;
+use chumsky::prelude::SimpleSpan;
 use std::marker::PhantomData;
 
 /// An arena for AstNodes. Generic over the Ast Type and matching Id
@@ -13,7 +13,7 @@ where
     Id: From<usize> + Into<usize> + Copy,
 {
     nodes: Vec<Ast>,
-    spans: Vec<Span>,
+    spans: Vec<SimpleSpan>,
     node_id: PhantomData<Id>,
 }
 
@@ -30,7 +30,7 @@ where
     }
 
     /// Add a new node to the arena
-    pub fn new_node(&mut self, ast: Ast, span: Span) -> Id {
+    pub fn new_node(&mut self, ast: Ast, span: SimpleSpan) -> Id {
         let id = self.nodes.len();
         self.nodes.push(ast);
         self.spans.push(span);
@@ -41,7 +41,7 @@ where
         self.nodes.get(id.into())
     }
 
-    pub fn get_span(&self, id: Id) -> Option<&Span> {
+    pub fn get_span(&self, id: Id) -> Option<&SimpleSpan> {
         self.spans.get(id.into())
     }
 }
