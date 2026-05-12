@@ -32,8 +32,8 @@ pub enum ExprAst {
     },
     FuncDef {
         name: String,
-        args: Vec<ArgAst>,
-        body: ExprId,
+        args: Vec<ArgId>,
+        body: Vec<ExprId>,
     },
 
     FuncCall {

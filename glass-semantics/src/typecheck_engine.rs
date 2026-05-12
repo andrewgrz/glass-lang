@@ -1,4 +1,4 @@
-use glass_syntax::ast::{BinOp, ExprArena, ExprAst, ExprId, Literal};
+use glass_syntax::ast::{ArgAstArena, BinOp, ExprArena, ExprAst, ExprId, Literal};
 use std::collections::HashMap;
 use std::{error, fmt};
 
@@ -24,6 +24,7 @@ impl error::Error for TypeError {}
 /// Value type heads — what a value IS
 #[derive(Debug, Clone, PartialEq)]
 pub enum VTypeHead {
+    VUnit,
     VBool,
     VInt,
     VFloat,
@@ -37,6 +38,7 @@ pub enum VTypeHead {
 /// Use type heads — what a use site EXPECTS
 #[derive(Debug, Clone, PartialEq)]
 pub enum UTypeHead {
+    UUnit,
     UBool,
     UInt,
     UFloat,
@@ -179,6 +181,15 @@ impl TypeCheckerEngine {
     }
 
     /// insert a bool value to the engine
+    pub fn unit_value(&mut self) -> Value {
+        self.new_val(VTypeHead::VUnit)
+    }
+    /// insert a bool use to the engine
+    pub fn unit_use(&mut self) -> Use {
+        self.new_use(UTypeHead::UUnit)
+    }
+
+    /// insert a bool value to the engine
     pub fn bool_value(&mut self) -> Value {
         self.new_val(VTypeHead::VBool)
     }
@@ -268,6 +279,7 @@ pub fn check_expr(
     engine: &mut TypeCheckerEngine,
     bindings: &mut Bindings,
     expr_arena: &ExprArena,
+    args_arena: &ArgAstArena,
     expr_id: &ExprId,
 ) -> Result<Value, TypeError> {
     let expr = expr_arena
@@ -285,8 +297,8 @@ pub fn check_expr(
             .get(name.as_str())
             .ok_or_else(|| TypeError(format!("Undefined variable {}", name))),
         ExprAst::BinOp { op, lhs, rhs } => {
-            let lhs_val = check_expr(engine, bindings, expr_arena, lhs)?;
-            let rhs_val = check_expr(engine, bindings, expr_arena, rhs)?;
+            let lhs_val = check_expr(engine, bindings, expr_arena, args_arena, lhs)?;
+            let rhs_val = check_expr(engine, bindings, expr_arena, args_arena, rhs)?;
 
             match op {
                 BinOp::Add | BinOp::Sub => {
@@ -320,7 +332,7 @@ pub fn check_expr(
             Ok(result_val)
         }
         ExprAst::Let { name, rhs } => {
-            let rhs_val = check_expr(engine, bindings, expr_arena, rhs)?;
+            let rhs_val = check_expr(engine, bindings, expr_arena, args_arena, rhs)?;
             bindings.insert(name.clone(), rhs_val);
             Ok(rhs_val)
         }
@@ -331,10 +343,32 @@ pub fn check_expr(
             let body_type = bindings.in_child_scope(|inner_bindings| {
                 for arg_ast in args {
                     let (param_val, param_bound) = engine.var();
-                    inner_bindings.insert(arg_ast.name(), param_val);
+                    inner_bindings.insert(
+                        args_arena
+                            .get_node(*arg_ast)
+                            .expect("ICE: arg_ast not found in arena")
+                            .name(),
+                        param_val,
+                    );
                     param_vars.push(param_bound);
                 }
-                check_expr(engine, inner_bindings, expr_arena, body)
+
+                let mut body_value: Option<Value> = None;
+
+                for expr_id in body {
+                    body_value = Some(check_expr(
+                        engine,
+                        inner_bindings,
+                        expr_arena,
+                        args_arena,
+                        expr_id,
+                    )?);
+                }
+
+                match body_value {
+                    Some(body_value) => Ok(body_value),
+                    None => Ok(engine.unit_value()),
+                }
             })?;
 
             // func takes the Use side of each param, and the Value of the body
@@ -350,7 +384,7 @@ pub fn check_expr(
 
             let mut arg_types = Vec::with_capacity(args.len());
             for arg in args {
-                let t = check_expr(engine, bindings, expr_arena, arg)?;
+                let t = check_expr(engine, bindings, expr_arena, args_arena, arg)?;
                 arg_types.push(t);
             }
 
@@ -386,17 +420,18 @@ mod check_heads_tests {
 mod check_expr_tests {
     use super::*;
     use chumsky::span::SimpleSpan;
-    use glass_syntax::ast::ArgAst;
-    use glass_syntax::ast::Literal::Bool;
+    use glass_syntax::ast::{ArgAst, ArgAstArena, Literal::Bool};
 
     struct AstHelper {
         pub expr_arena: ExprArena,
+        pub args_arena: ArgAstArena,
     }
 
     impl AstHelper {
         fn new() -> AstHelper {
             AstHelper {
                 expr_arena: ExprArena::new(),
+                args_arena: ArgAstArena::new(),
             }
         }
 
@@ -439,10 +474,19 @@ mod check_expr_tests {
             self.new_expr(ExprAst::Variable(name))
         }
 
-        fn func_def(&mut self, name: String, args: Vec<String>, body: ExprId) -> ExprId {
+        fn func_def(&mut self, name: String, args: Vec<String>, body: Vec<ExprId>) -> ExprId {
             let arg_asts = args
                 .iter()
-                .map(|s| ArgAst::new(s.clone()))
+                .map(|s| {
+                    self.args_arena.new_node(
+                        ArgAst::new(s.clone()),
+                        SimpleSpan {
+                            start: 0,
+                            end: 1,
+                            context: (),
+                        },
+                    )
+                })
                 .collect::<Vec<_>>();
 
             self.new_expr(ExprAst::FuncDef {
@@ -460,8 +504,9 @@ mod check_expr_tests {
     fn check_expr_helper(expr_arena: &ExprArena, expr_id: &ExprId) -> Result<Value, TypeError> {
         let mut engine = TypeCheckerEngine::new();
         let mut bindings = Bindings::new();
+        let args_arena = &ArgAstArena::new();
 
-        check_expr(&mut engine, &mut bindings, expr_arena, expr_id)
+        check_expr(&mut engine, &mut bindings, expr_arena, args_arena, expr_id)
     }
 
     #[test]
@@ -522,19 +567,38 @@ mod check_expr_tests {
         let mut ast = AstHelper::new();
         let a = ast.float(1.1);
         let let_expr = ast.let_expr("example".into(), a);
-        let let_value = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &let_expr)
-            .expect("ICE: Assignment failed");
+        let let_value = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &let_expr,
+        )
+        .expect("ICE: Assignment failed");
 
         // Make sure that it returns the same Value we inserted
         let var = ast.var("example".into());
-        let res = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var);
+        let res = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &var,
+        );
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), let_value);
 
         // Test that a second call resolves to the same thing
         let var = ast.var("example".into());
         assert_eq!(
-            check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var).unwrap(),
+            check_expr(
+                &mut engine,
+                &mut bindings,
+                &ast.expr_arena,
+                &ast.args_arena,
+                &var
+            )
+            .unwrap(),
             let_value
         );
     }
@@ -546,7 +610,16 @@ mod check_expr_tests {
 
         let mut ast = AstHelper::new();
         let var = ast.var("example".into());
-        assert!(check_expr(&mut engine, &mut bindings, &ast.expr_arena, &var).is_err());
+        assert!(
+            check_expr(
+                &mut engine,
+                &mut bindings,
+                &ast.expr_arena,
+                &ast.args_arena,
+                &var
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -561,8 +634,14 @@ mod check_expr_tests {
         let b = ast.var("b".into());
         let body = ast.add(a, b);
 
-        let func = ast.func_def("adder".into(), vec!["a".into(), "b".into()], body);
-        let res = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &func);
+        let func = ast.func_def("adder".into(), vec!["a".into(), "b".into()], vec![body]);
+        let res = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func,
+        );
         assert!(res.is_ok());
 
         // Test the usage now
@@ -570,7 +649,94 @@ mod check_expr_tests {
         let b_var = ast.int(2);
         let func_call = ast.func_call("adder".into(), vec![a_var, b_var]);
 
-        let res_2 = check_expr(&mut engine, &mut bindings, &ast.expr_arena, &func_call);
+        let res_2 = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func_call,
+        );
+        assert!(res_2.is_ok());
+    }
+
+    #[test]
+    fn test_function_definition_and_use_fail() {
+        let mut engine = TypeCheckerEngine::new();
+        let mut bindings = Bindings::new();
+
+        let mut ast = AstHelper::new();
+
+        // A simple body of a + b
+        let a = ast.var("a".into());
+        let b = ast.var("b".into());
+        let body = ast.add(a, b);
+
+        let func = ast.func_def("adder".into(), vec!["a".into(), "b".into()], vec![body]);
+        let res = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func,
+        );
+        assert!(res.is_ok());
+
+        // Test the usage now
+        let a_var = ast.int(1);
+        let b_var = ast.bool(true);
+        let func_call = ast.func_call("adder".into(), vec![a_var, b_var]);
+
+        let res_2 = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func_call,
+        );
+        assert!(res_2.is_err());
+    }
+
+    #[test]
+    fn test_function_multiple_expr() {
+        let mut engine = TypeCheckerEngine::new();
+        let mut bindings = Bindings::new();
+
+        let mut ast = AstHelper::new();
+
+        // A simple body of a + b
+        let a = ast.var("a".into());
+        let b = ast.var("b".into());
+        let expr_1 = ast.add(a, b);
+
+        let a = ast.var("a".into());
+        let expr_2 = ast.add(a, expr_1);
+
+        let func = ast.func_def(
+            "adder".into(),
+            vec!["a".into(), "b".into()],
+            vec![expr_1, expr_2],
+        );
+        let res = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func,
+        );
+        assert!(res.is_ok());
+
+        // Test the usage now
+        let a_var = ast.int(1);
+        let b_var = ast.int(2);
+        let func_call = ast.func_call("adder".into(), vec![a_var, b_var]);
+
+        let res_2 = check_expr(
+            &mut engine,
+            &mut bindings,
+            &ast.expr_arena,
+            &ast.args_arena,
+            &func_call,
+        );
         assert!(res_2.is_ok());
     }
 }
