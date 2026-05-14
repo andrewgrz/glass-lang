@@ -25,6 +25,10 @@ pub enum ExprAst {
         op: BinOp,
         rhs: ExprId,
     },
+    UnaryOp {
+        op: BinOp,
+        rhs: ExprId,
+    },
     Variable(String),
     Let {
         name: String,
@@ -113,6 +117,9 @@ pub type ArgAstArena = AstArena<ArgAst, ArgId>;
 pub enum BinOp {
     Add,
     Sub,
+    Mul,
+    Div,
+    Neg,
 }
 
 #[cfg(test)]

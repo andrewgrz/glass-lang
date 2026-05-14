@@ -301,7 +301,7 @@ pub fn check_expr(
             let rhs_val = check_expr(engine, bindings, expr_arena, args_arena, rhs)?;
 
             match op {
-                BinOp::Add | BinOp::Sub => {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     // Fast path: both operand types are already concrete.
                     // This catches literal arithmetic immediately with precise errors.
                     if let (Some(lhs_head), Some(rhs_head)) =
@@ -319,12 +319,46 @@ pub fn check_expr(
                         };
                     }
                 }
+
+                _ => unimplemented!(),
+            }
+            // Fallback path: at least one operand is a variable.
+            // Use the constraint-based approach so generic code works.
+            let (result_val, result_use) = engine.var();
+            engine.flow(rhs_val, result_use)?;
+
+            let num_use = engine.numeric_use();
+            engine.flow(result_val, num_use)?;
+            Ok(result_val)
+        }
+
+        ExprAst::UnaryOp { op, rhs } => {
+            let rhs_val = check_expr(engine, bindings, expr_arena, args_arena, rhs)?;
+
+            match op {
+                BinOp::Neg => {
+                    // Fast path: both operand types are already concrete.
+                    // This catches literal arithmetic immediately with precise errors.
+                    if let Some(rhs_head) = engine.value_head(rhs_val) {
+                        use VTypeHead::*;
+
+                        return match rhs_head {
+                            VInt => Ok(engine.int_value()),
+                            VFloat => Ok(engine.float_value()),
+                            _ => Err(TypeError(format!(
+                                "Incompatible types for unary op {:?}",
+                                op
+                            ))),
+                        };
+                    }
+                }
+
+                _ => unreachable!(),
             }
 
             // Fallback path: at least one operand is a variable.
             // Use the constraint-based approach so generic code works.
             let (result_val, result_use) = engine.var();
-            engine.flow(lhs_val, result_use)?;
             engine.flow(rhs_val, result_use)?;
 
             let num_use = engine.numeric_use();
@@ -466,6 +500,37 @@ mod check_expr_tests {
             })
         }
 
+        fn neg(&mut self, b: ExprId) -> ExprId {
+            self.new_expr(ExprAst::UnaryOp {
+                rhs: b,
+                op: BinOp::Neg,
+            })
+        }
+
+        fn sub(&mut self, a: ExprId, b: ExprId) -> ExprId {
+            self.new_expr(ExprAst::BinOp {
+                lhs: a,
+                rhs: b,
+                op: BinOp::Sub,
+            })
+        }
+
+        fn mul(&mut self, a: ExprId, b: ExprId) -> ExprId {
+            self.new_expr(ExprAst::BinOp {
+                lhs: a,
+                rhs: b,
+                op: BinOp::Mul,
+            })
+        }
+
+        fn div(&mut self, a: ExprId, b: ExprId) -> ExprId {
+            self.new_expr(ExprAst::BinOp {
+                lhs: a,
+                rhs: b,
+                op: BinOp::Div,
+            })
+        }
+
         fn let_expr(&mut self, name: String, rhs: ExprId) -> ExprId {
             self.new_expr(ExprAst::Let { name, rhs })
         }
@@ -524,6 +589,30 @@ mod check_expr_tests {
     }
 
     #[test]
+    fn test_int_neg() {
+        let mut ast = AstHelper::new();
+        let b = ast.int(2);
+        let op = ast.neg(b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_float_neg() {
+        let mut ast = AstHelper::new();
+        let b = ast.float(2.3);
+        let op = ast.neg(b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_string_neg_fails() {
+        let mut ast = AstHelper::new();
+        let b = ast.bool(false);
+        let op = ast.neg(b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_err());
+    }
+
+    #[test]
     fn test_int_add() {
         let mut ast = AstHelper::new();
         let a = ast.int(1);
@@ -538,6 +627,60 @@ mod check_expr_tests {
         let a = ast.int(1);
         let b = ast.float(2.2);
         let op = ast.add(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_err());
+    }
+
+    #[test]
+    fn test_int_sub() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.int(2);
+        let op = ast.sub(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_int_float_sub() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.float(2.2);
+        let op = ast.sub(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_err());
+    }
+
+    #[test]
+    fn test_int_mul() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.int(2);
+        let op = ast.mul(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_int_float_mul() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.float(2.2);
+        let op = ast.mul(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_err());
+    }
+
+    #[test]
+    fn test_int_div() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.int(2);
+        let op = ast.div(a, b);
+        assert!(check_expr_helper(&ast.expr_arena, &op).is_ok());
+    }
+
+    #[test]
+    fn test_int_float_div() {
+        let mut ast = AstHelper::new();
+        let a = ast.int(1);
+        let b = ast.float(2.2);
+        let op = ast.div(a, b);
         assert!(check_expr_helper(&ast.expr_arena, &op).is_err());
     }
 
