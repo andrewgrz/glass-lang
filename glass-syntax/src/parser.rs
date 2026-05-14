@@ -41,7 +41,7 @@ fn expr_parser<'src: 'arena, 'arena>(
         });
 
         let atom = choice((float, int, variable))
-            .or(expr.delimited_by(just('('), just(')')))
+            .or(expr.clone().delimited_by(just('('), just(')')))
             .padded();
 
         let op = |c| just(c).padded();
@@ -78,7 +78,17 @@ fn expr_parser<'src: 'arena, 'arena>(
             },
         );
 
-        sum
+        let r#let = text::ascii::keyword("let")
+            .ignore_then(name())
+            .then_ignore(just('='))
+            .then(expr)
+            .map_with(|(name, rhs), extra| {
+                expr_arena
+                    .borrow_mut()
+                    .new_node(ExprAst::Let { name, rhs }, extra.span())
+            });
+
+        choice((r#let, sum))
     })
 }
 
@@ -142,6 +152,7 @@ fn def<'src: 'arena, 'arena>(
 #[cfg(test)]
 mod parse_expr_test {
     use super::*;
+    use crate::ast::ExprAst::Variable;
 
     fn runner_helper(input: &str) -> (ExprAst, ExprArena) {
         let arena = RefCell::new(ExprArena::new());
@@ -172,6 +183,17 @@ mod parse_expr_test {
                 assert_eq!(rhs_expected, *inner_arena.get_node(rhs).unwrap());
             }
             _ => panic!("Expected UnaryOp"),
+        }
+    }
+
+    fn run_let(input: &str, name_expected: &str, rhs_expected: ExprAst) {
+        let (result, inner_arena) = runner_helper(input);
+        match result {
+            ExprAst::Let { name, rhs } => {
+                assert_eq!(name_expected, &name);
+                assert_eq!(rhs_expected, *inner_arena.get_node(rhs).unwrap());
+            }
+            _ => panic!("Expected Let"),
         }
     }
 
@@ -305,6 +327,14 @@ mod parse_expr_test {
         run_binop("1 /1", one_expr.clone(), BinOp::Div, one_expr.clone());
         run_binop("1/ 1", one_expr.clone(), BinOp::Div, one_expr.clone());
         run_binop("1 / 1", one_expr.clone(), BinOp::Div, one_expr.clone());
+    }
+
+    #[test]
+    fn test_parse_let() {
+        run_let("let a = 10", "a", ExprAst::Literal(Literal::Int(10)));
+        run_let("let a=10", "a", ExprAst::Literal(Literal::Int(10)));
+        run_let("let a= 10", "a", ExprAst::Literal(Literal::Int(10)));
+        run_let("let b = name", "b", Variable("name".to_string()));
     }
 
     #[test]
