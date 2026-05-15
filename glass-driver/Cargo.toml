@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+glass-syntax = { path = "../glass-syntax" }
+glass-semantics = { path = "../glass-semantics" }
+chumsky = "0.13.0"
+ariadne = "0.6.0"

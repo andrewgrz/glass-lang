@@ -5,16 +5,20 @@ use chumsky::input::MapExtra;
 use chumsky::prelude::*;
 use std::cell::RefCell;
 
-type Extra<'src> = extra::Err<Rich<'src, char>>;
+// Define a state type
+use chumsky::extra::SimpleState;
+
+type ParserState<'src> = SimpleState<Vec<Rich<'src, char>>>;
+type Extra<'src> = extra::Full<Rich<'src, char>, ParserState<'src>, ()>;
 type MExtra<'src, 'a> = MapExtra<'src, 'a, &'src str, Extra<'src>>;
 
-fn name<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> + Clone {
+fn name<'src>() -> impl Parser<'src, &'src str, String, Extra<'src>> + Clone {
     text::ident().padded().map(|s: &str| s.to_string())
 }
 
 fn expr_parser<'src: 'arena, 'arena>(
     expr_arena: &'arena RefCell<ExprArena>,
-) -> impl Parser<'src, &'src str, ExprId, extra::Err<Rich<'src, char>>> + 'arena {
+) -> impl Parser<'src, &'src str, ExprId, Extra<'src>> + 'arena {
     recursive(|expr| {
         let int = text::int(10).map_with(|s: &str, extra| {
             expr_arena.borrow_mut().new_node(
@@ -92,21 +96,23 @@ fn expr_parser<'src: 'arena, 'arena>(
     })
 }
 
-fn type_annotation<'src>() -> impl Parser<'src, &'src str, String, extra::Err<Rich<'src, char>>> {
+fn type_annotation<'src>() -> impl Parser<'src, &'src str, String, Extra<'src>> {
     just(':').ignore_then(name())
 }
 
+/// Parses a module (typically a filename)
 pub fn module_parser<'src: 'arena, 'arena>(
     expr_arena: &'arena RefCell<ExprArena>,
     args_arena: &'arena RefCell<ArgAstArena>,
-) -> impl Parser<'src, &'src str, Vec<ExprId>, extra::Err<Rich<'src, char>>> {
+) -> impl Parser<'src, &'src str, Vec<ExprId>, Extra<'src>> {
     let stmt = def(expr_arena, args_arena).padded();
     stmt.repeated().collect::<Vec<ExprId>>()
 }
+
 fn def<'src: 'arena, 'arena>(
     expr_arena: &'arena RefCell<ExprArena>,
     args_arena: &'arena RefCell<ArgAstArena>,
-) -> impl Parser<'src, &'src str, ExprId, extra::Err<Rich<'src, char>>> + 'arena {
+) -> impl Parser<'src, &'src str, ExprId, Extra<'src>> + 'arena {
     let func_arg = name().then(type_annotation().or_not()).map_with(
         |(name, ty): (String, Option<String>), extra| {
             args_arena.borrow_mut().new_node(
@@ -135,7 +141,17 @@ fn def<'src: 'arena, 'arena>(
 
     just("def")
         .padded()
-        .ignore_then(name())
+        .ignore_then(name().recover_with(via_parser(
+            none_of("(").repeated().at_least(1).to_slice().map_with(
+                |bad: &str, extra: &mut MExtra| {
+                    let span = extra.span();
+                    extra
+                        .state()
+                        .push(Rich::custom(span, format!("invalid function name '{bad}'")));
+                    "<error>".to_string()
+                },
+            ),
+        )))
         .then(func_args)
         .padded()
         .then(body)

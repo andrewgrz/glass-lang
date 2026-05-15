@@ -7,4 +7,4 @@ edition = "2024"
 glass-syntax = { path = "../glass-syntax" }
 
 [dev-dependencies]
-chumsky = { version = "0.12.0", features = ["default", "lexical-numbers"] }
+chumsky = { version = "0.13.0", features = ["default", "lexical-numbers"] }
