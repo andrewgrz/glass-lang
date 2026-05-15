@@ -52,7 +52,7 @@ pub fn print_errors(filename: &str, contents: &str, parse_errs: Vec<Rich<char>>)
     });
 }
 
-fn parse_contents(contents: &str, arenas: Arenas) -> Result<Vec<ExprId>, Vec<Rich<char>>> {
+fn parse_contents(contents: &str, arenas: Arenas) -> Result<Vec<ExprId>, Vec<Rich<'_, char>>> {
     let mut state = SimpleState::from(Vec::<Rich<char>>::new());
 
     let parser = module_parser(&arenas.expr, &arenas.ast);
