@@ -144,9 +144,10 @@ fn def<'src: 'arena, 'arena>(
                     none_of(")").repeated().at_least(1).to_slice().map_with(
                         |bad: &str, extra: &mut MExtra| {
                             let span = extra.span();
-                            extra
-                                .state()
-                                .push(Rich::custom(span, format!("invalid function param '{bad}', expected identifier")));
+                            extra.state().push(Rich::custom(
+                                span,
+                                format!("invalid function param '{bad}', expected identifier"),
+                            ));
                             ArgId::from(0)
                         },
                     ),
@@ -159,9 +160,14 @@ fn def<'src: 'arena, 'arena>(
 
     let body = just('{')
         .ignore_then(
-            expr_parser(expr_arena).recover_with(via_parser(
-                none_of("}").repeated().at_least(1).to_slice().map(|_| ExprId::from(0)),
-            ))
+            expr_parser(expr_arena)
+                .recover_with(via_parser(
+                    none_of("}")
+                        .repeated()
+                        .at_least(1)
+                        .to_slice()
+                        .map(|_| ExprId::from(0)),
+                ))
                 .separated_by(just(';'))
                 .collect::<Vec<ExprId>>(),
         )
