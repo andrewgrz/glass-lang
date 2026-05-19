@@ -38,13 +38,28 @@ fn expr_parser<'src: 'arena, 'arena>(
                 )
             });
 
+        let def_call = name()
+            .then_ignore(just('('))
+            .then(
+                expr.clone()
+                    .padded()
+                    .separated_by(just(','))
+                    .collect::<Vec<ExprId>>(),
+            )
+            .then_ignore(just(')'))
+            .map_with(|(name, args), extra| {
+                expr_arena
+                    .borrow_mut()
+                    .new_node(ExprAst::FuncCall { name, args }, extra.span())
+            });
+
         let variable = name().map_with(|s: String, extra| {
             expr_arena
                 .borrow_mut()
                 .new_node(ExprAst::Variable(s.to_string()), extra.span())
         });
 
-        let atom = choice((float, int, variable))
+        let atom = choice((float, int, def_call, variable))
             .or(expr.clone().delimited_by(just('('), just(')')))
             .padded();
 
@@ -125,6 +140,17 @@ fn def<'src: 'arena, 'arena>(
     let func_args = just('(')
         .ignore_then(
             func_arg
+                .recover_with(via_parser(
+                    none_of(")").repeated().at_least(1).to_slice().map_with(
+                        |bad: &str, extra: &mut MExtra| {
+                            let span = extra.span();
+                            extra
+                                .state()
+                                .push(Rich::custom(span, format!("invalid function param '{bad}', expected identifier")));
+                            ArgId::from(0)
+                        },
+                    ),
+                ))
                 .padded()
                 .separated_by(just(','))
                 .collect::<Vec<ArgId>>(),
@@ -133,7 +159,9 @@ fn def<'src: 'arena, 'arena>(
 
     let body = just('{')
         .ignore_then(
-            expr_parser(expr_arena)
+            expr_parser(expr_arena).recover_with(via_parser(
+                none_of("}").repeated().at_least(1).to_slice().map(|_| ExprId::from(0)),
+            ))
                 .separated_by(just(';'))
                 .collect::<Vec<ExprId>>(),
         )
@@ -208,6 +236,22 @@ mod parse_expr_test {
             ExprAst::Let { name, rhs } => {
                 assert_eq!(name_expected, &name);
                 assert_eq!(rhs_expected, *inner_arena.get_node(rhs).unwrap());
+            }
+            _ => panic!("Expected Let"),
+        }
+    }
+
+    fn run_def_call(input: &str, name_expected: &str, args_expected: Vec<ExprAst>) {
+        let (result, inner_arena) = runner_helper(input);
+        match result {
+            ExprAst::FuncCall { name, args } => {
+                assert_eq!(name_expected, &name);
+                assert_eq!(
+                    args_expected,
+                    args.iter()
+                        .map(|arg| inner_arena.get_node(*arg).unwrap().clone())
+                        .collect::<Vec<ExprAst>>()
+                );
             }
             _ => panic!("Expected Let"),
         }
@@ -351,6 +395,41 @@ mod parse_expr_test {
         run_let("let a=10", "a", ExprAst::Literal(Literal::Int(10)));
         run_let("let a= 10", "a", ExprAst::Literal(Literal::Int(10)));
         run_let("let b = name", "b", Variable("name".to_string()));
+    }
+
+    #[test]
+    fn test_parse_def_call() {
+        run_def_call("add()", "add", vec![]);
+        run_def_call("add(1)", "add", vec![ExprAst::Literal(Literal::Int(1))]);
+        run_def_call(
+            "add(1, 2)",
+            "add",
+            vec![
+                ExprAst::Literal(Literal::Int(1)),
+                ExprAst::Literal(Literal::Int(2)),
+            ],
+        );
+        run_def_call("add(a)", "add", vec![Variable("a".to_string())]);
+        run_def_call(
+            "add(a,b)",
+            "add",
+            vec![Variable("a".to_string()), Variable("b".to_string())],
+        );
+        run_def_call(
+            "add(a ,b)",
+            "add",
+            vec![Variable("a".to_string()), Variable("b".to_string())],
+        );
+        run_def_call(
+            "add(a, b)",
+            "add",
+            vec![Variable("a".to_string()), Variable("b".to_string())],
+        );
+        run_def_call(
+            "add( a, b )",
+            "add",
+            vec![Variable("a".to_string()), Variable("b".to_string())],
+        );
     }
 
     #[test]
