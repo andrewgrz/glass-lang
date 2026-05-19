@@ -2,3 +2,7 @@
 def adder(a,b) {
   a + b
 }
+
+def main() {
+  adder(1,2)
+}

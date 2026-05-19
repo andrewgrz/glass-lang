@@ -1,8 +1,12 @@
 
-def 💕(a - 0) {
+def 💕(a, b) {
   *
 }
 
 def test(a - 0) {
+  a
+}
+
+def bad_arg(a, 0) {
   a
 }
