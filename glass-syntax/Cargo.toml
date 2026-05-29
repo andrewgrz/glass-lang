@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 chumsky = { version = "0.13.0", features = ["default", "lexical-numbers"] }
+logos = "0.16.1"

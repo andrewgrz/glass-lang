@@ -138,14 +138,14 @@ mod tests {
             end: 1,
             context: (),
         };
-        let a = arena.new_node(ExprAst::new_int(1), a_span.clone());
+        let a = arena.new_node(ExprAst::new_int(1), a_span);
 
         let b_span = SimpleSpan {
             start: 1,
             end: 2,
             context: (),
         };
-        let b = arena.new_node(ExprAst::new_int(2), b_span.clone());
+        let b = arena.new_node(ExprAst::new_int(2), b_span);
 
         // The bin op21
         let bin_op = ExprAst::BinOp {
