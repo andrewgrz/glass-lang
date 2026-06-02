@@ -57,6 +57,12 @@ pub enum Token {
     #[token("def")]
     Def,
 
+    #[token("true")]
+    True,
+
+    #[token("false")]
+    False,
+
     // Symbols
     #[token("(")]
     LeftParen,
@@ -118,7 +124,17 @@ impl SpannedToken {
             },
         }
     }
+
+    pub fn span(&self) -> SimpleSpan {
+        self.span.clone()
+    }
+
+    pub fn token(&self) -> Result<&Token, &Diagnostic> {
+        self.token.as_ref()
+    }
 }
+
+pub type Tokens = Vec<SpannedToken>;
 
 /// Lex a content into a series of tokens
 pub fn lex(content: &str) -> Vec<SpannedToken> {

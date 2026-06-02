@@ -6,3 +6,6 @@ pub const INVALID_NUMBER_PARSE: usize = 251;
 
 /// \[252] UNKNOWN_LEX_ERROR
 pub const UNKNOWN_LEX_ERROR: usize = 252;
+
+/// \[256] Syntax error found while parsing
+pub const SYNTAX_ERROR: usize = 256;

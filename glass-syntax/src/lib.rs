@@ -6,3 +6,4 @@ pub mod codes;
 pub mod diagnostics;
 pub mod lexer;
 pub mod parser;
+pub mod pratt_parser;
